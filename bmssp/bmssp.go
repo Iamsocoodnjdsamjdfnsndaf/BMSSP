@@ -3,42 +3,24 @@ package bmssp
 import (
 	"container/heap"
 	"math"
+	"playground/common"
 )
 
-type Edge struct {
-	U, V   int
-	Weight float64
-}
-
-type Graph struct {
-	N     int
-	Edges []Edge
-	Adj   map[int][]Edge
-}
-
-type DistEntry struct {
-	vertex int
-	dist   float64
-	index  int
-}
-
-func BaseCase(B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
-	// Run Dijkstra's algorithm for base case
-	pq := make(PriorityQueue, 0)
+func BaseCase(B int, S []int, g *common.Graph, dist map[int]float64) (int, []int) {
+	pq := make(common.PriorityQueue, 0)
 	heap.Init(&pq)
 	inHeap := make(map[int]bool)
 
-	// Initialize with source vertices
 	for _, s := range S {
-		heap.Push(&pq, &DistEntry{vertex: s, dist: dist[s]})
+		heap.Push(&pq, &common.DistEntry{Vertex: s, Dist: dist[s]})
 		inHeap[s] = true
 	}
 
 	U := make([]int, 0)
 
 	for pq.Len() > 0 {
-		entry := heap.Pop(&pq).(*DistEntry)
-		u := entry.vertex
+		entry := heap.Pop(&pq).(*common.DistEntry)
+		u := entry.Vertex
 		delete(inHeap, u)
 
 		if dist[u] >= float64(B) {
@@ -55,7 +37,7 @@ func BaseCase(B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
 			if newDist < dist[v] {
 				dist[v] = newDist
 				if !inHeap[v] && newDist < float64(B) {
-					heap.Push(&pq, &DistEntry{vertex: v, dist: newDist})
+					heap.Push(&pq, &common.DistEntry{Vertex: v, Dist: newDist})
 					inHeap[v] = true
 				}
 			}
@@ -73,7 +55,7 @@ func BaseCase(B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
 	return Bp, U
 }
 
-func FindPivots(B int, g *Graph, dist map[int]float64) ([]int, map[int]float64) {
+func FindPivots(B int, g *common.Graph, dist map[int]float64) ([]int, map[int]float64) {
 	P := make([]int, 0)
 	W := make(map[int]float64)
 
@@ -89,7 +71,7 @@ func FindPivots(B int, g *Graph, dist map[int]float64) ([]int, map[int]float64) 
 	return P, W
 }
 
-func BMSSP(l, B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
+func BMSSP(l, B int, S []int, g *common.Graph, dist map[int]float64) (int, []int) {
 	if dist == nil {
 		dist = make(map[int]float64)
 		for i := 0; i < g.N; i++ {
@@ -114,7 +96,7 @@ func BMSSP(l, B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
 
 	var D DataStructureD
 	M := 1 << uint(l-1) // 2^(l-1)
-	D.Initialize(M, B)
+	D.Initialize(M)
 
 	for _, x := range P {
 		if d, exists := dist[x]; exists {
@@ -130,7 +112,7 @@ func BMSSP(l, B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
 		Bip, Ui := BMSSP(l-1, Bi, Si, g, dist)
 		U = append(U, Ui...)
 
-		K := make([]DistEntry, 0)
+		K := make([]common.DistEntry, 0)
 
 		for _, u := range Ui {
 			for _, e := range g.Adj[u] {
@@ -143,7 +125,7 @@ func BMSSP(l, B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
 					if newDist >= float64(Bi) && newDist < float64(B) {
 						D.Insert(v, newDist)
 					} else if newDist <= float64(Bip) && newDist < float64(Bi) {
-						K = append(K, DistEntry{vertex: v, dist: newDist})
+						K = append(K, common.DistEntry{Vertex: v, Dist: newDist})
 					}
 				}
 			}
@@ -152,7 +134,7 @@ func BMSSP(l, B int, S []int, g *Graph, dist map[int]float64) (int, []int) {
 		toAdd := K
 		for _, s := range S {
 			if dist[s] >= float64(Bip) && dist[s] < float64(Bi) {
-				toAdd = append(toAdd, DistEntry{vertex: s, dist: dist[s]})
+				toAdd = append(toAdd, common.DistEntry{Vertex: s, Dist: dist[s]})
 			}
 		}
 		D.BatchPrepend(toAdd)

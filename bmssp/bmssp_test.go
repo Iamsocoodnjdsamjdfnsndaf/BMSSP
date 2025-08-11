@@ -3,26 +3,27 @@ package bmssp
 import (
 	"container/heap"
 	"math"
+	"playground/common"
 	"testing"
 )
 
 func TestPriorityQueue(t *testing.T) {
-	pq := make(PriorityQueue, 0)
+	pq := make(common.PriorityQueue, 0)
 	heap.Init(&pq)
 
-	heap.Push(&pq, &DistEntry{vertex: 1, dist: 5.0})
-	heap.Push(&pq, &DistEntry{vertex: 2, dist: 3.0})
-	heap.Push(&pq, &DistEntry{vertex: 3, dist: 7.0})
-	heap.Push(&pq, &DistEntry{vertex: 4, dist: 1.0})
+	heap.Push(&pq, &common.DistEntry{Vertex: 1, Dist: 5.0})
+	heap.Push(&pq, &common.DistEntry{Vertex: 2, Dist: 3.0})
+	heap.Push(&pq, &common.DistEntry{Vertex: 3, Dist: 7.0})
+	heap.Push(&pq, &common.DistEntry{Vertex: 4, Dist: 1.0})
 
 	expected := []int{4, 2, 1, 3}
 	for i, exp := range expected {
 		if pq.Len() == 0 {
 			t.Fatalf("Queue empty at iteration %d", i)
 		}
-		entry := heap.Pop(&pq).(*DistEntry)
-		if entry.vertex != exp {
-			t.Errorf("Expected vertex %d, got %d", exp, entry.vertex)
+		entry := heap.Pop(&pq).(*common.DistEntry)
+		if entry.Vertex != exp {
+			t.Errorf("Expected vertex %d, got %d", exp, entry.Vertex)
 		}
 	}
 
@@ -33,7 +34,7 @@ func TestPriorityQueue(t *testing.T) {
 
 func TestDataStructureD_BasicOperations(t *testing.T) {
 	var d DataStructureD
-	d.Initialize(10, 100)
+	d.Initialize(10)
 
 	if !d.IsEmpty() {
 		t.Error("Expected empty data structure after initialization")
@@ -60,12 +61,12 @@ func TestDataStructureD_BasicOperations(t *testing.T) {
 
 func TestDataStructureD_BatchPrepend(t *testing.T) {
 	var d DataStructureD
-	d.Initialize(10, 100)
+	d.Initialize(10)
 
-	entries := []DistEntry{
-		{vertex: 1, dist: 5.0},
-		{vertex: 2, dist: 3.0},
-		{vertex: 3, dist: 7.0},
+	entries := []common.DistEntry{
+		{Vertex: 1, Dist: 5.0},
+		{Vertex: 2, Dist: 3.0},
+		{Vertex: 3, Dist: 7.0},
 	}
 
 	d.BatchPrepend(entries)
@@ -125,13 +126,13 @@ func TestBMSSP_MultiSource(t *testing.T) {
 }
 
 func TestBMSSP_DisconnectedGraph(t *testing.T) {
-	g := &Graph{
+	g := &common.Graph{
 		N:   6,
-		Adj: make(map[int][]Edge),
+		Adj: make(map[int][]common.Edge),
 	}
 
 	// Two disconnected components
-	edges := []Edge{
+	edges := []common.Edge{
 		{0, 1, 1.0},
 		{1, 2, 1.0},
 		{3, 4, 1.0},
@@ -140,7 +141,7 @@ func TestBMSSP_DisconnectedGraph(t *testing.T) {
 
 	for _, e := range edges {
 		g.Adj[e.U] = append(g.Adj[e.U], e)
-		g.Adj[e.V] = append(g.Adj[e.V], Edge{U: e.V, V: e.U, Weight: e.Weight})
+		g.Adj[e.V] = append(g.Adj[e.V], common.Edge{U: e.V, V: e.U, Weight: e.Weight})
 	}
 	g.Edges = edges
 
@@ -164,13 +165,13 @@ func TestBMSSP_DisconnectedGraph(t *testing.T) {
 }
 
 func TestBMSSP_CycleGraph(t *testing.T) {
-	g := &Graph{
+	g := &common.Graph{
 		N:   4,
-		Adj: make(map[int][]Edge),
+		Adj: make(map[int][]common.Edge),
 	}
 
 	// Create cycle with different weights
-	edges := []Edge{
+	edges := []common.Edge{
 		{0, 1, 1.0},
 		{1, 2, 2.0},
 		{2, 3, 1.0},
@@ -179,7 +180,7 @@ func TestBMSSP_CycleGraph(t *testing.T) {
 
 	for _, e := range edges {
 		g.Adj[e.U] = append(g.Adj[e.U], e)
-		g.Adj[e.V] = append(g.Adj[e.V], Edge{U: e.V, V: e.U, Weight: e.Weight})
+		g.Adj[e.V] = append(g.Adj[e.V], common.Edge{U: e.V, V: e.U, Weight: e.Weight})
 	}
 	g.Edges = edges
 
@@ -247,9 +248,9 @@ func TestBMSSP_BoundaryConstraint(t *testing.T) {
 
 func TestBMSSP_WeightedCompleteGraph(t *testing.T) {
 	// Complete graph K4
-	g := &Graph{
+	g := &common.Graph{
 		N:   4,
-		Adj: make(map[int][]Edge),
+		Adj: make(map[int][]common.Edge),
 	}
 
 	// All pairs connected with varying weights
@@ -263,8 +264,8 @@ func TestBMSSP_WeightedCompleteGraph(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		for j := i + 1; j < 4; j++ {
 			w := weights[i][j]
-			g.Adj[i] = append(g.Adj[i], Edge{U: i, V: j, Weight: w})
-			g.Adj[j] = append(g.Adj[j], Edge{U: j, V: i, Weight: w})
+			g.Adj[i] = append(g.Adj[i], common.Edge{U: i, V: j, Weight: w})
+			g.Adj[j] = append(g.Adj[j], common.Edge{U: j, V: i, Weight: w})
 		}
 	}
 
@@ -286,9 +287,9 @@ func TestBMSSP_WeightedCompleteGraph(t *testing.T) {
 }
 
 func TestBMSSP_EmptyGraph(t *testing.T) {
-	g := &Graph{
+	g := &common.Graph{
 		N:   1,
-		Adj: make(map[int][]Edge),
+		Adj: make(map[int][]common.Edge),
 	}
 
 	S := []int{0}
@@ -340,20 +341,20 @@ func TestBMSSP_LargeSparseGraph(t *testing.T) {
 
 // Helper functions
 
-func createLinearGraph(n int) *Graph {
-	g := &Graph{
+func createLinearGraph(n int) *common.Graph {
+	g := &common.Graph{
 		N:   n,
-		Adj: make(map[int][]Edge),
+		Adj: make(map[int][]common.Edge),
 	}
 
-	edges := make([]Edge, 0, n-1)
+	edges := make([]common.Edge, 0, n-1)
 	for i := 0; i < n-1; i++ {
-		edges = append(edges, Edge{i, i + 1, 1.0})
+		edges = append(edges, common.Edge{U: i, V: i + 1, Weight: 1.0})
 	}
 
 	for _, e := range edges {
 		g.Adj[e.U] = append(g.Adj[e.U], e)
-		g.Adj[e.V] = append(g.Adj[e.V], Edge{U: e.V, V: e.U, Weight: e.Weight})
+		g.Adj[e.V] = append(g.Adj[e.V], common.Edge{U: e.V, V: e.U, Weight: e.Weight})
 	}
 	g.Edges = edges
 
