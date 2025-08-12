@@ -2,153 +2,73 @@ package dijkstra
 
 import (
 	"container/heap"
+	"errors"
 	"math"
 	"playground/common"
 )
 
-func Dijkstra(g *common.Graph, s int) map[int]float64 {
-	dist := make(map[int]float64)
-
-	for i := 0; i < g.N; i++ {
-		dist[i] = math.Inf(1)
-	}
-	dist[s] = 0
-
-	pq := make(common.PriorityQueue, 0)
-	heap.Init(&pq)
-	heap.Push(&pq, &common.DistEntry{Vertex: s, Dist: 0})
-
-	inHeap := make(map[int]bool)
-	inHeap[s] = true
-
-	processed := make(map[int]bool)
-
-	for pq.Len() > 0 {
-		entry := heap.Pop(&pq).(*common.DistEntry)
-		u := entry.Vertex
-		delete(inHeap, u)
-
-		if processed[u] {
-			continue
-		}
-		processed[u] = true
-
-		// Relax all edges from u
-		for _, edge := range g.Adj[u] {
-			v := edge.V
-			newDist := dist[u] + edge.Weight
-
-			if newDist < dist[v] {
-				dist[v] = newDist
-				if !processed[v] {
-					heap.Push(&pq, &common.DistEntry{Vertex: v, Dist: newDist})
-					inHeap[v] = true
-				}
-			}
-		}
-	}
-
-	return dist
+// DijkstraAlgorithm encapsulates the state for a run of Dijkstra's algorithm.
+type DijkstraAlgorithm struct {
+	graph    *common.Graph
+	sources  []int
+	boundary *float64 // A nil boundary means the search is unbounded.
 }
 
-func DijkstraMultiSource(g *common.Graph, sources []int) map[int]float64 {
-	dist := make(map[int]float64)
-
-	// Initialize distances
-	for i := 0; i < g.N; i++ {
-		dist[i] = math.Inf(1)
+// NewDijkstraAlgorithm creates a new solver for Dijkstra's algorithm.
+func NewDijkstraAlgorithm(g *common.Graph, sources []int, boundary *float64) *DijkstraAlgorithm {
+	return &DijkstraAlgorithm{
+		graph:    g,
+		sources:  sources,
+		boundary: boundary,
 	}
-	for _, s := range sources {
-		dist[s] = 0
-	}
-
-	pq := make(common.PriorityQueue, 0)
-	heap.Init(&pq)
-
-	inHeap := make(map[int]bool)
-	for _, s := range sources {
-		heap.Push(&pq, &common.DistEntry{Vertex: s, Dist: 0})
-		inHeap[s] = true
-	}
-
-	processed := make(map[int]bool)
-
-	for pq.Len() > 0 {
-		entry := heap.Pop(&pq).(*common.DistEntry)
-		u := entry.Vertex
-		delete(inHeap, u)
-
-		if processed[u] {
-			continue
-		}
-		processed[u] = true
-
-		for _, edge := range g.Adj[u] {
-			v := edge.V
-			newDist := dist[u] + edge.Weight
-
-			if newDist < dist[v] {
-				dist[v] = newDist
-				if !processed[v] {
-					heap.Push(&pq, &common.DistEntry{Vertex: v, Dist: newDist})
-					inHeap[v] = true
-				}
-			}
-		}
-	}
-
-	return dist
 }
 
-func DijkstraBounded(g *common.Graph, sources []int, B float64) map[int]float64 {
-	dist := make(map[int]float64)
-
-	for i := 0; i < g.N; i++ {
-		dist[i] = math.Inf(1)
+// Solve executes Dijkstra's algorithm based on the configured sources and boundary.
+func (a *DijkstraAlgorithm) Solve() (map[int]float64, error) {
+	if len(a.sources) == 0 {
+		return nil, errors.New("dijkstra: at least one source vertex must be provided")
 	}
-	for _, s := range sources {
-		dist[s] = 0
+
+	dist := make(map[int]float64)
+	for i := 0; i < a.graph.N; i++ {
+		dist[i] = math.Inf(1)
 	}
 
 	pq := make(common.PriorityQueue, 0)
 	heap.Init(&pq)
 
-	inHeap := make(map[int]bool)
-	for _, s := range sources {
-		heap.Push(&pq, &common.DistEntry{Vertex: s, Dist: 0})
-		inHeap[s] = true
+	for _, s := range a.sources {
+		if s >= 0 && s < a.graph.N {
+			dist[s] = 0
+			heap.Push(&pq, &common.DistEntry{Vertex: s, Dist: 0})
+		}
 	}
-
-	processed := make(map[int]bool)
 
 	for pq.Len() > 0 {
 		entry := heap.Pop(&pq).(*common.DistEntry)
 		u := entry.Vertex
+		d := entry.Dist
 
-		if dist[u] >= B {
-			break
-		}
-
-		delete(inHeap, u)
-
-		if processed[u] {
+		if d > dist[u] {
 			continue
 		}
-		processed[u] = true
+		if a.boundary != nil && dist[u] >= *a.boundary {
+			continue
+		}
 
-		for _, edge := range g.Adj[u] {
+		for _, edge := range a.graph.Adj[u] {
 			v := edge.V
 			newDist := dist[u] + edge.Weight
 
-			if newDist < dist[v] && newDist < B {
+			if a.boundary != nil && newDist >= *a.boundary {
+				continue
+			}
+			if newDist < dist[v] {
 				dist[v] = newDist
-				if !processed[v] {
-					heap.Push(&pq, &common.DistEntry{Vertex: v, Dist: newDist})
-					inHeap[v] = true
-				}
+				heap.Push(&pq, &common.DistEntry{Vertex: v, Dist: newDist})
 			}
 		}
 	}
 
-	return dist
+	return dist, nil
 }

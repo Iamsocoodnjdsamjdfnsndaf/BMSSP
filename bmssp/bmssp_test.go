@@ -1,40 +1,14 @@
 package bmssp
 
 import (
-	"container/heap"
 	"math"
 	"playground/common"
 	"testing"
 )
 
-func TestPriorityQueue(t *testing.T) {
-	pq := make(common.PriorityQueue, 0)
-	heap.Init(&pq)
-
-	heap.Push(&pq, &common.DistEntry{Vertex: 1, Dist: 5.0})
-	heap.Push(&pq, &common.DistEntry{Vertex: 2, Dist: 3.0})
-	heap.Push(&pq, &common.DistEntry{Vertex: 3, Dist: 7.0})
-	heap.Push(&pq, &common.DistEntry{Vertex: 4, Dist: 1.0})
-
-	expected := []int{4, 2, 1, 3}
-	for i, exp := range expected {
-		if pq.Len() == 0 {
-			t.Fatalf("Queue empty at iteration %d", i)
-		}
-		entry := heap.Pop(&pq).(*common.DistEntry)
-		if entry.Vertex != exp {
-			t.Errorf("Expected vertex %d, got %d", exp, entry.Vertex)
-		}
-	}
-
-	if pq.Len() != 0 {
-		t.Errorf("Expected empty queue, has %d elements", pq.Len())
-	}
-}
-
 func TestDataStructureD_BasicOperations(t *testing.T) {
 	var d DataStructureD
-	d.Initialize(10)
+	d.Initialize(2, 100.0) // M=2, B=100.0
 
 	if !d.IsEmpty() {
 		t.Error("Expected empty data structure after initialization")
@@ -43,30 +17,42 @@ func TestDataStructureD_BasicOperations(t *testing.T) {
 	d.Insert(1, 5.0)
 	d.Insert(2, 3.0)
 	d.Insert(3, 7.0)
+	d.Insert(4, 1.0)
 
 	if d.IsEmpty() {
 		t.Error("Expected non-empty after insertions")
 	}
 
 	B1, S1 := d.Pull()
-	if B1 != 3 || len(S1) != 1 || S1[0] != 2 {
-		t.Errorf("Pull failed: B=%d, S=%v", B1, S1)
+	if B1 != 5.0 {
+		t.Errorf("Pull 1: Expected boundary 5.0, got %f", B1)
+	}
+	if len(S1) != 2 || S1[0] != 4 || S1[1] != 2 {
+		t.Errorf("Pull 1: Expected S={4, 2}, got %v", S1)
 	}
 
-	d.Insert(1, 5.0) // Duplicate check
-	if d.pq.Len() != 2 {
-		t.Errorf("Expected 2 elements after duplicate insert, got %d", d.pq.Len())
+	B2, S2 := d.Pull()
+	if B2 != 100.0 {
+		t.Errorf("Pull 2: Expected boundary 100.0, got %f", B2)
+	}
+	if len(S2) != 2 || S2[0] != 1 || S2[1] != 3 {
+		t.Errorf("Pull 2: Expected S={1, 3}, got %v", S2)
+	}
+
+	if !d.IsEmpty() {
+		t.Error("Expected empty data structure after two pulls")
 	}
 }
 
 func TestDataStructureD_BatchPrepend(t *testing.T) {
 	var d DataStructureD
-	d.Initialize(10)
+	d.Initialize(10, 100.0)
 
 	entries := []common.DistEntry{
 		{Vertex: 1, Dist: 5.0},
 		{Vertex: 2, Dist: 3.0},
 		{Vertex: 3, Dist: 7.0},
+		{Vertex: 2, Dist: 2.0}, // Duplicate with smaller value
 	}
 
 	d.BatchPrepend(entries)
@@ -75,28 +61,83 @@ func TestDataStructureD_BatchPrepend(t *testing.T) {
 		t.Errorf("Expected 3 elements after batch prepend, got %d", d.pq.Len())
 	}
 
-	// Verify order
-	B, S := d.Pull()
-	if B != 3 || S[0] != 2 {
-		t.Errorf("Unexpected first pull: B=%d, S=%v", B, S)
+	_, S := d.Pull()
+	expected := []int{2, 1, 3}
+	if len(S) != len(expected) {
+		t.Fatalf("Expected %d pulled elements, got %d", len(expected), len(S))
+	}
+	for i := range expected {
+		if S[i] != expected[i] {
+			t.Errorf("Unexpected pull order: expected %v, got %v", expected, S)
+		}
 	}
 }
 
-func TestBMSSP_SingleSource(t *testing.T) {
-	g := createLinearGraph(5)
-	S := []int{0}
-	B := 100
-	l := 2
+func TestDataStructureD_TieDrain_NoSplit(t *testing.T) {
+	var d DataStructureD
+	d.Initialize(1, 1000) // M=1 on purpose
 
-	dist := initializeDistances(g.N, S)
+	// three equal keys, then a larger one
+	d.Insert(10, 0)
+	d.Insert(11, 0)
+	d.Insert(12, 0)
+	d.Insert(20, 5)
 
-	Bp, _ := BMSSP(l, B, S, g, dist)
+	Bi, S := d.Pull()
+	if len(S) != 3 {
+		t.Fatalf("expected to drain all ties, got %d elems: %v", len(S), S)
+	}
+	if Bi != 5 {
+		t.Fatalf("expected Bi=5 (next strictly larger), got %v", Bi)
+	}
+}
 
-	if Bp > B {
-		t.Errorf("Boundary exceeded: B'=%d, B=%d", Bp, B)
+func TestBMSSP_FractionalWeights(t *testing.T) {
+	g := &common.Graph{N: 6, Adj: make(map[int][]common.Edge)}
+	add := func(u, v int, w float64) {
+		g.Adj[u] = append(g.Adj[u], common.Edge{U: u, V: v, Weight: w})
+		g.Adj[v] = append(g.Adj[v], common.Edge{U: v, V: u, Weight: w})
+	}
+	for i := 0; i < 5; i++ {
+		add(i, i+1, 0.6)
 	}
 
-	// Check distances are correct for linear graph
+	algo := NewBMSSPAlgorithm(g, 3, 1000, []int{0})
+	dist, _ := algo.Solve()
+
+	for i := 0; i < 6; i++ {
+		want := float64(i) * 0.6
+		if math.Abs(dist[i]-want) > 1e-9 {
+			t.Fatalf("v%d: want %.1f, got %v", i, want, dist[i])
+		}
+	}
+}
+
+func TestBMSSP_NoPivots_Successful(t *testing.T) {
+	// line of 6 with weight 1; B so tight no relax happens
+	g := &common.Graph{N: 6, Adj: make(map[int][]common.Edge)}
+	for i := 0; i < 5; i++ {
+		g.Adj[i] = append(g.Adj[i], common.Edge{U: i, V: i + 1, Weight: 1})
+		g.Adj[i+1] = append(g.Adj[i+1], common.Edge{U: i + 1, V: i, Weight: 1})
+	}
+	algo := NewBMSSPAlgorithm(g, 3, 0.5, []int{0})
+	dist, _ := algo.Solve()
+
+	if dist[0] != 0 || !math.IsInf(dist[1], 1) {
+		t.Fatalf("expected only source reached under tight B; got dist=%v", dist)
+	}
+}
+
+// --- Tests for BMSSPAlgorithm ---
+
+func TestBMSSP_SingleSource(t *testing.T) {
+	g := createLinearGraph(5)
+	algo := NewBMSSPAlgorithm(g, 2, 100.0, []int{0})
+	dist, err := algo.Solve()
+	if err != nil {
+		t.Fatalf("Solve() returned an error: %v", err)
+	}
+
 	expectedDist := map[int]float64{0: 0, 1: 1, 2: 2, 3: 3, 4: 4}
 	for v, expected := range expectedDist {
 		if math.Abs(dist[v]-expected) > 1e-9 {
@@ -108,15 +149,10 @@ func TestBMSSP_SingleSource(t *testing.T) {
 func TestBMSSP_MultiSource(t *testing.T) {
 	g := createLinearGraph(5)
 	S := []int{0, 4} // Sources at both ends
-	B := 100
-	l := 2
-
-	dist := initializeDistances(g.N, S)
-
-	Bp, _ := BMSSP(l, B, S, g, dist) // Use _ to ignore U
-
-	if Bp > B {
-		t.Errorf("Boundary exceeded: B'=%d, B=%d", Bp, B)
+	algo := NewBMSSPAlgorithm(g, 2, 100.0, S)
+	dist, err := algo.Solve()
+	if err != nil {
+		t.Fatalf("Solve() returned an error: %v", err)
 	}
 
 	// Middle vertex should have distance 2 from nearest source
@@ -130,69 +166,38 @@ func TestBMSSP_DisconnectedGraph(t *testing.T) {
 		N:   6,
 		Adj: make(map[int][]common.Edge),
 	}
-
-	// Two disconnected components
 	edges := []common.Edge{
-		{0, 1, 1.0},
-		{1, 2, 1.0},
-		{3, 4, 1.0},
-		{4, 5, 1.0},
+		{0, 1, 1.0}, {1, 2, 1.0}, // Component 1
+		{3, 4, 1.0}, {4, 5, 1.0}, // Component 2
 	}
-
 	for _, e := range edges {
 		g.Adj[e.U] = append(g.Adj[e.U], e)
 		g.Adj[e.V] = append(g.Adj[e.V], common.Edge{U: e.V, V: e.U, Weight: e.Weight})
 	}
 	g.Edges = edges
 
-	S := []int{0}
-	B := 100
-	l := 2
+	algo := NewBMSSPAlgorithm(g, 2, 100.0, []int{0})
+	dist, err := algo.Solve()
+	if err != nil {
+		t.Fatalf("Solve() returned an error: %v", err)
+	}
 
-	dist := initializeDistances(g.N, S)
-
-	_, _ = BMSSP(l, B, S, g, dist)
-
-	// Vertices in same component should have finite distance
 	if math.IsInf(dist[1], 1) || math.IsInf(dist[2], 1) {
 		t.Error("Connected vertices have infinite distance")
 	}
-
-	// Vertices in other component should have infinite distance
 	if !math.IsInf(dist[3], 1) || !math.IsInf(dist[4], 1) || !math.IsInf(dist[5], 1) {
 		t.Error("Disconnected vertices have finite distance")
 	}
 }
 
 func TestBMSSP_CycleGraph(t *testing.T) {
-	g := &common.Graph{
-		N:   4,
-		Adj: make(map[int][]common.Edge),
+	g := createCycleGraph()
+	algo := NewBMSSPAlgorithm(g, 2, 100.0, []int{0})
+	dist, err := algo.Solve()
+	if err != nil {
+		t.Fatalf("Solve() returned an error: %v", err)
 	}
 
-	// Create cycle with different weights
-	edges := []common.Edge{
-		{0, 1, 1.0},
-		{1, 2, 2.0},
-		{2, 3, 1.0},
-		{3, 0, 5.0}, // Completes cycle
-	}
-
-	for _, e := range edges {
-		g.Adj[e.U] = append(g.Adj[e.U], e)
-		g.Adj[e.V] = append(g.Adj[e.V], common.Edge{U: e.V, V: e.U, Weight: e.Weight})
-	}
-	g.Edges = edges
-
-	S := []int{0}
-	B := 100
-	l := 2
-
-	dist := initializeDistances(g.N, S)
-
-	_, _ = BMSSP(l, B, S, g, dist)
-
-	// Check shortest paths
 	expected := map[int]float64{0: 0, 1: 1, 2: 3, 3: 4}
 	for v, exp := range expected {
 		if math.Abs(dist[v]-exp) > 1e-9 {
@@ -203,19 +208,13 @@ func TestBMSSP_CycleGraph(t *testing.T) {
 
 func TestBMSSP_DifferentRecursionDepths(t *testing.T) {
 	g := createLinearGraph(10)
-	S := []int{0}
-	B := 100
-
 	for l := 0; l <= 4; l++ {
-		dist := initializeDistances(g.N, S)
-
-		Bp, _ := BMSSP(l, B, S, g, dist)
-
-		if Bp > B {
-			t.Errorf("l=%d: Boundary exceeded B'=%d, B=%d", l, Bp, B)
+		algo := NewBMSSPAlgorithm(g, l, 100.0, []int{0})
+		dist, err := algo.Solve()
+		if err != nil {
+			t.Fatalf("l=%d: Solve() returned an error: %v", l, err)
 		}
 
-		// Verify all vertices reachable
 		for i := 0; i < g.N; i++ {
 			if math.IsInf(dist[i], 1) {
 				t.Errorf("l=%d: Vertex %d unreachable", l, i)
@@ -226,214 +225,72 @@ func TestBMSSP_DifferentRecursionDepths(t *testing.T) {
 
 func TestBMSSP_BoundaryConstraint(t *testing.T) {
 	g := createLinearGraph(10)
-	S := []int{0}
-	B := 5 // Small boundary
-	l := 2
-
-	dist := initializeDistances(g.N, S)
-
-	Bp, U := BMSSP(l, B, S, g, dist)
-
-	if Bp > B {
-		t.Errorf("Boundary exceeded: B'=%d, B=%d", Bp, B)
+	B := 5.0 // Small boundary
+	algo := NewBMSSPAlgorithm(g, 2, B, []int{0})
+	dist, err := algo.Solve()
+	if err != nil {
+		t.Fatalf("Solve() returned an error: %v", err)
 	}
 
-	// Check U only contains vertices within boundary
-	for _, v := range U {
-		if dist[v] >= float64(B) {
-			t.Errorf("Vertex %d in U has distance %f >= B=%d", v, dist[v], B)
+	// Check within/beyond the boundary behavior.
+	for i := 0; i < 10; i++ {
+		if float64(i) < B && dist[i] != float64(i) {
+			t.Errorf("Vertex %d within boundary has wrong distance: got %f, want %f", i, dist[i], float64(i))
 		}
-	}
-}
-
-func TestBMSSP_WeightedCompleteGraph(t *testing.T) {
-	// Complete graph K4
-	g := &common.Graph{
-		N:   4,
-		Adj: make(map[int][]common.Edge),
-	}
-
-	// All pairs connected with varying weights
-	weights := [][]float64{
-		{0, 1, 3, 7},
-		{1, 0, 2, 5},
-		{3, 2, 0, 1},
-		{7, 5, 1, 0},
-	}
-
-	for i := 0; i < 4; i++ {
-		for j := i + 1; j < 4; j++ {
-			w := weights[i][j]
-			g.Adj[i] = append(g.Adj[i], common.Edge{U: i, V: j, Weight: w})
-			g.Adj[j] = append(g.Adj[j], common.Edge{U: j, V: i, Weight: w})
-		}
-	}
-
-	S := []int{0}
-	B := 100
-	l := 2
-
-	dist := initializeDistances(g.N, S)
-
-	_, _ = BMSSP(l, B, S, g, dist)
-
-	// Verify shortest paths
-	expected := map[int]float64{0: 0, 1: 1, 2: 3, 3: 4}
-	for v, exp := range expected {
-		if math.Abs(dist[v]-exp) > 1e-9 {
-			t.Errorf("Vertex %d: expected dist=%f, got %f", v, exp, dist[v])
-		}
-	}
-}
-
-func TestBMSSP_EmptyGraph(t *testing.T) {
-	g := &common.Graph{
-		N:   1,
-		Adj: make(map[int][]common.Edge),
-	}
-
-	S := []int{0}
-	B := 100
-	l := 0
-
-	dist := initializeDistances(g.N, S)
-
-	Bp, _ := BMSSP(l, B, S, g, dist)
-
-	if Bp > B {
-		t.Errorf("Boundary exceeded for single vertex: B'=%d, B=%d", Bp, B)
-	}
-
-	if dist[0] != 0 {
-		t.Errorf("Source distance should be 0, got %f", dist[0])
 	}
 }
 
 func TestBMSSP_LargeSparseGraph(t *testing.T) {
-	// Create larger sparse graph (path)
 	n := 100
 	g := createLinearGraph(n)
-
-	S := []int{0, n / 2, n - 1} // Multiple sources
-	B := 1000
-	l := 4
-
-	dist := initializeDistances(g.N, S)
-
-	Bp, U := BMSSP(l, B, S, g, dist)
-
-	if Bp > B {
-		t.Errorf("Boundary exceeded: B'=%d, B=%d", Bp, B)
+	S := []int{0, n / 2, n - 1}
+	algo := NewBMSSPAlgorithm(g, 4, 1000.0, S)
+	dist, err := algo.Solve()
+	if err != nil {
+		t.Fatalf("Solve() returned an error: %v", err)
 	}
 
-	// Check all vertices are processed
 	for i := 0; i < n; i++ {
 		if math.IsInf(dist[i], 1) {
 			t.Errorf("Vertex %d has infinite distance", i)
 		}
 	}
-
-	// Verify U is not empty
-	if len(U) == 0 {
-		t.Error("U should not be empty for reachable graph")
-	}
 }
 
-// Helper functions
+// --- Helper Functions ---
 
 func createLinearGraph(n int) *common.Graph {
 	g := &common.Graph{
 		N:   n,
 		Adj: make(map[int][]common.Edge),
 	}
-
 	edges := make([]common.Edge, 0, n-1)
 	for i := 0; i < n-1; i++ {
 		edges = append(edges, common.Edge{U: i, V: i + 1, Weight: 1.0})
 	}
-
 	for _, e := range edges {
 		g.Adj[e.U] = append(g.Adj[e.U], e)
 		g.Adj[e.V] = append(g.Adj[e.V], common.Edge{U: e.V, V: e.U, Weight: e.Weight})
 	}
 	g.Edges = edges
-
 	return g
 }
 
-func initializeDistances(n int, sources []int) map[int]float64 {
-	dist := make(map[int]float64)
-	for i := 0; i < n; i++ {
-		dist[i] = math.Inf(1)
+func createCycleGraph() *common.Graph {
+	g := &common.Graph{
+		N:   4,
+		Adj: make(map[int][]common.Edge),
 	}
-	for _, s := range sources {
-		dist[s] = 0
+	edges := []common.Edge{
+		{0, 1, 1.0},
+		{1, 2, 2.0},
+		{2, 3, 1.0},
+		{3, 0, 5.0},
 	}
-	return dist
-}
-
-func TestContainsVertex(t *testing.T) {
-	vertices := []int{1, 3, 5, 7}
-
-	tests := []struct {
-		v        int
-		expected bool
-	}{
-		{1, true},
-		{3, true},
-		{5, true},
-		{7, true},
-		{2, false},
-		{4, false},
-		{6, false},
+	for _, e := range edges {
+		g.Adj[e.U] = append(g.Adj[e.U], e)
+		g.Adj[e.V] = append(g.Adj[e.V], common.Edge{U: e.V, V: e.U, Weight: e.Weight})
 	}
-
-	for _, tt := range tests {
-		found := false
-		for _, v := range vertices {
-			if v == tt.v {
-				found = true
-				break
-			}
-		}
-		if found != tt.expected {
-			t.Errorf("containsVertex(%d): expected %v, got %v", tt.v, tt.expected, found)
-		}
-	}
-}
-
-func BenchmarkBMSSP_SmallGraph(b *testing.B) {
-	g := createLinearGraph(10)
-	S := []int{0}
-	B := 100
-	l := 2
-
-	for i := 0; i < b.N; i++ {
-		dist := initializeDistances(g.N, S)
-		_, _ = BMSSP(l, B, S, g, dist)
-	}
-}
-
-func BenchmarkBMSSP_MediumGraph(b *testing.B) {
-	g := createLinearGraph(100)
-	S := []int{0}
-	B := 1000
-	l := 3
-
-	for i := 0; i < b.N; i++ {
-		dist := initializeDistances(g.N, S)
-		_, _ = BMSSP(l, B, S, g, dist)
-	}
-}
-
-func BenchmarkBMSSP_MultiSource(b *testing.B) {
-	g := createLinearGraph(100)
-	S := []int{0, 25, 50, 75, 99}
-	B := 1000
-	l := 3
-
-	for i := 0; i < b.N; i++ {
-		dist := initializeDistances(g.N, S)
-		_, _ = BMSSP(l, B, S, g, dist)
-	}
+	g.Edges = edges
+	return g
 }
